@@ -16,20 +16,22 @@ class Database(DB):
     def __init__(self, args):
         super(Database, self).__init__(args)
         self.filename = args['FILE']
+        self.init_file = args['INIT_SQL_FILE']
         # database setup by flask - use:
         #   g.con == connection object
         #   g.cur == cursor
 
-
     def first_run(self):
         con = sqlite3.connect(self.filename)
         cur = con.cursor()
-        cur.executescript(open('init.sql').read())
+        init_sql_file = open(self.init_file)
+        cur.executescript(init_sql_file.read())
+        init_sql_file.close()
         con.commit()
         con.close()
 
     def get_user(self, email):
-        g.cur.execute("select * from users where email = ?", (email,)) 
+        g.cur.execute("select * from users where email = ?", (email,))
         user = g.cur.fetchone()
         if user:
             return user
@@ -96,7 +98,7 @@ class Database(DB):
         for t in note_data['tags']:
             i = self.get_and_create_tag(t)
             self.tagit(key, i)
-        
+
         g.con.commit()
         return True
 
@@ -131,7 +133,7 @@ class Database(DB):
         for t in note_data['tags']:
             i = self.get_and_create_tag(t)
             self.tagit(key, i)
-        
+
         g.con.commit()
         return True
 
@@ -195,7 +197,7 @@ class Database(DB):
         # should throw error if length too large? (nah, let's be nice)
         length = min(length, 100)
 
-            
+
         g.cur.execute("select rowid, key, deleted, modifydate, createdate, syncnum, version, minversion, sharekey, publishkey, pinned, markdown, unread, list from notes where userid = ? and rowid > ? and modifydate > ? order by rowid", (user['id'], mark, since))
         notes = g.cur.fetchall()
 
@@ -205,7 +207,7 @@ class Database(DB):
             notes = notes[:length]
 
 
-        # ok there's probably a more efficient way to process notes here.... 
+        # ok there's probably a more efficient way to process notes here....
         # contributes of code or ideas welcome ;)
         for note in notes:
             key = note['key']
@@ -231,7 +233,7 @@ class Database(DB):
             data['mark'] = newmark
 
         return (data, 200)
-        
+
 
 
 
