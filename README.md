@@ -1,5 +1,5 @@
 
-# snsrv
+# snsrv [![Build Status](https://travis-ci.org/swalladge/snsrv.svg?branch=master)](https://travis-ci.org/swalladge/snsrv)
 
 A [Simplenote](http://simplenote.com/) compatible api and self hosted notes server.
 
