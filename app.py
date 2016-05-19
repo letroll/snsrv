@@ -37,7 +37,7 @@ RE_INT = re.compile(r'\d+')
 RE_FLOAT = re.compile(r'\d+(\.\d+|)')
 
 app = Flask(__name__)
-CORS(app)
+CORS(app, resources=r'/api2?/.*')
 
 app.config.from_object('config')
 
