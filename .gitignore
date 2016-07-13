@@ -1,8 +1,22 @@
+
+# python files
 *.pyc
-env
-*.swp
 __pycache__
+
+# virtualenv
+env
+venv
+
+# editor swap files
+*.swp
+
+# random local dir
 local
+
+# database files
 db
 *.db
+*.sqlite3
+
+# docs output dir
 /doc
