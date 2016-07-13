@@ -2,7 +2,7 @@
 import bcrypt
 import uuid
 
-from sqlalchemy import create_engine, Sequence, inspect
+from sqlalchemy import create_engine, Sequence
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, Table
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
@@ -233,17 +233,27 @@ class db():
         return [n.dict() for n in notes]
 
     def _gen_unique_key(self):
-        return str(uuid.uuid4()) + str(int(utils.now()))
+        # WARNING: don't call this part way through initializing a note
+        # (calling session.query flushes)
+        # unlikely, but might as well be sure
+        # key = str(uuid.uuid4())
+        # return key
+        while True:
+            key = str(uuid.uuid4())
+            if not self.session.query(Note).filter_by(key=key).one_or_none():
+                return key
 
     # makes a new note object - used by the server part in creating notes
     def new_note(self, user):
         now = utils.now()
 
+        key = self._gen_unique_key()
+
         note = Note()
 
         note.user = user
 
-        note.key = self._gen_unique_key()
+        note.key = key
         note.deleted = 0
         note.modify = now
         note.create = now
@@ -251,24 +261,98 @@ class db():
         note.version = 1
         note.minversion = 1
         note.sharekey = None
-        note.systemtags = []
         note.tags = []
         note.content = ''
+        note.pinned = 0
+        note.unread = 0
+        note.markdown = 0
+        note.islist = 0
         
         return note
 
-    # adds or updates a note to the database.
-    def add_note(self, note, tags, systemtags):
-        user = note.user
+    def create_note(self, user, data):
+        note = self.new_note(user)
 
+        content = data.get('content')
+        if content is None:
+            return None
+        note.content = content
+
+        deleted = data.get('deleted')
+        if deleted is not None:
+            note.deleted = deleted
+        modify = data.get('modify')
+        if modify is not None:
+            note.modify = modify
+        create = data.get('create')
+        if create is not None:
+            note.create = create
+
+        systemtags = data.get('systemtags')
         if systemtags is not None:
             note.pinned = 1 if 'pinned' in systemtags else 0
             note.unread = 1 if 'unread' in systemtags else 0
             note.markdown = 1 if 'markdown' in systemtags else 0
             note.islist = 1 if 'list' in systemtags else 0
 
-        old_tags = [t for t in note.tags]
+        tags = data.get('tags')
         if tags is not None:
+            note.tags = []
+            for tagname in data.get('tags'):
+                t = self.session.query(Tag).filter_by(lower_name=tagname.lower(), userid=user.id).one_or_none()
+                if not t:
+                    t = Tag(user.id, tagname)
+                note.tags.append(t)
+
+        self.session.add(note)
+
+        if self.commit():
+            return note.dict()
+        return None
+
+    # adds or updates a note to the database.
+    def update_note(self, user, key, data):
+        note = self.session.query(Note).filter_by(userid=user.id, key=key).one()
+
+        content = data.get('content', None)
+        if content is not None and content != note.content:
+            # TODO: how to handle versions this way?
+            # version vs modifydate
+            version = data.get('version', None)
+            if version is not None:
+                if version <= note.version:
+                    return None # older version of the note
+            self._save_version(note)
+            note.version += 1
+            minversion = max(0, note.version - cfg.max_versions)
+            if minversion > note.minversion:
+                self._drop_old_versions(note, minversion)
+            note.minversion = minversion
+            note.content = content
+
+        deleted = data.get('deleted')
+        if deleted is not None:
+            note.deleted = deleted
+        modify = data.get('modify')
+        if modify is not None:
+            note.modify = modify
+        create = data.get('create')
+        if create is not None:
+            note.create = create
+
+        note.syncnum += 1
+
+        systemtags = data.get('systemtags', None)
+        if systemtags is not None:
+            note.pinned = 1 if 'pinned' in systemtags else 0
+            note.unread = 1 if 'unread' in systemtags else 0
+            note.markdown = 1 if 'markdown' in systemtags else 0
+            note.islist = 1 if 'list' in systemtags else 0
+
+        old_tags = []
+        tags = data.get('tags', None)
+        if tags is not None:
+            old_tags = [t for t in note.tags]
             note.tags = []
             for tagname in tags:
                 t = self.session.query(Tag).filter_by(lower_name=tagname.lower(), userid=user.id).one_or_none()
@@ -283,12 +367,7 @@ class db():
             if count == 0:
                 self.session.delete(t)
 
-        # check if the note is in the session yet - won't be if this is a new
-        # note
-        if inspect(note).transient:
-            self.session.add(note)
-
-        if not self.commit():
+        if self.commit():
             return note.dict()
         return None
 
@@ -307,10 +386,10 @@ class db():
             return True
         return False
 
-    def save_version(self, note):
+    def _save_version(self, note):
         v = Version()
         v.key = note.key
-        v.versiondate = note.modifydate
+        v.versiondate = note.modify
         v.content = note.content
         v.version = note.version
         self.session.add(v)
@@ -400,11 +479,13 @@ class db():
         return (500, None)
 
     def commit(self):
-        # TODO: check this and make sure will work
+        # TODO: need to catch errors whenever flush called (maybe turn off
+        # autoflush?)
         try:
             self.session.commit()
             return True
-        except:
+        except Exception as e:
+            gen_log.warn('error committing session: {}'.format(str(e)))
             self.session.rollback()
             return False
 

@@ -27,7 +27,7 @@ class notes_handler(ApiHandler):
     def get(self, key=None, version=None):
         """return the note by key"""
         if not key:
-            return self.send_error(400)
+            return self.send_error(400, reason='no key')
 
         if version is not None:
             try:
@@ -40,19 +40,6 @@ class notes_handler(ApiHandler):
             return self.send_error(404, reason='bookmark not found')
 
         self.send_data(note)
-
-    def _create_note(self, data):
-        """creates a new note - data is sanitized"""
-            # # update note - must save old version
-            # if key is not None and content != note.content:
-            #     self.db.save_version(note)
-
-        # TODO: check syncnum/version/modifydate to ensure old notes don't
-        # overwrite new notes...
-        pass
-
-    def _update_note(self, key, data):
-        """updates a note - data is sanitized"""
 
     def post(self, key=None):
         """create or update a note"""
@@ -97,6 +84,16 @@ class notes_handler(ApiHandler):
                 return self.send_error(400, reason='invalid createdate')
         safe_data['create'] = create
 
+        # version
+        version = data.get('version', None)
+        if version is not None:
+            try:
+                version = int(version)
+                assert(version > 0)
+            except:
+                return self.send_error(400, reason='invalid version')
+        safe_data['version'] = version
+
         # systemtags
         systemtags = data.get('systemtags', None)
         if systemtags is not None:
@@ -113,7 +110,7 @@ class notes_handler(ApiHandler):
         if tags is not None:
             try:
                 assert(isinstance(tags, list))
-                for tag in systemtags:
+                for tag in tags:
                     assert(isinstance(tag, str) and invalid_tag_chars.search(tag) is None)
             except:
                 return self.send_error(401, reason='invalid tags')
@@ -126,14 +123,27 @@ class notes_handler(ApiHandler):
                 assert(isinstance(content, str))
                 # TODO: max-len restriction
             except:
-                return self.send_error(401, reason='invalid content')
+                return self.send_error(400, reason='invalid content')
+        else:
+            # if new note, needs content
+            if key is None:
+                return self.send_error(400, reason='no content')
         safe_data['content'] = content
 
-        # note to build on
-        if key is not None:
-            self._update_note(key, safe_data)
+        # now actually create or update a note
+        note = None
+        if key is None:
+            note = self.db.create_note(self.user, safe_data)
         else:
-            self._create_note(safe_data)
+            old_note = self.db.get_note(self.user, key)
+            if not old_note:
+                return self.send_error(404, reason='note not found')
+            note = self.db.update_note(self.user, key, safe_data)
+
+        if note:
+            return self.write(note)
+        return self.send_error(500)
+
 
     def delete(self, key=None):
         """delete a note if exists"""

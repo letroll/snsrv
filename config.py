@@ -15,3 +15,6 @@ cors_origin = "*"
 listen_port = 8888
 listen_host = "127.0.0.1"
 debug = True
+
+# note options
+max_versions = 20
