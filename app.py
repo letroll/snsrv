@@ -147,15 +147,18 @@ class notes_handler(ApiHandler):
 
     def delete(self, key=None):
         """delete a note if exists"""
-        note = self.db.get_note(self.user, key)
+        note = self.db.get_note_object(self.user, key)
         if not note:
             return self.send_error(404, reason='note not found')
 
-        res = self.db.delete_note(self.user, note);
-        if res:
-            return
+        # check if note in trashcan
+        if note.deleted == 0:
+            return self.send_error(400, reason='note not in trash')
 
-        self.send_error(500, reason='error deleting note from database')
+
+        ok = self.db.delete_note(self.user, note)
+        if not ok:
+            return self.send_error(500, reason='error deleting note from database')
 
 
 class tags_handler(ApiHandler):

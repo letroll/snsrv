@@ -217,8 +217,8 @@ class db():
             note = self.session.query(Version).filter_by(key=key, version=version).one_or_none()
         return note.dict() if note else None
 
-    def get_raw_note(self, user, key):
-        return self.session.query(Note).filter_by(userid=user.id, key=key).first()
+    def get_note_object(self, user, key):
+        return self.session.query(Note).filter_by(userid=user.id, key=key).one_or_none()
 
     def get_notes(self, user, since=None, tags=None):
         query = self.session.query(Note).filter_by(userid=user.id)
