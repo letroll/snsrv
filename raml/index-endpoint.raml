@@ -1,0 +1,25 @@
+#%RAML 0.8
+
+description: index of notes
+get:
+  description: get a list of notes
+  queryParameters:
+    mark:
+      description: mark for pagination - only supply to get next page of notes (where mark == mark given in last index request
+      type: integer
+    length:
+      description: number of notes to return
+      type: integer
+    since:
+      description: all notes after given modify time (in seconds since epoch)
+      type: number
+  responses:
+    200:
+      description: json object containing the count and array of notes
+      body:
+        application/json:
+          schema: index
+          example: |
+            {
+            }
+

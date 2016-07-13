@@ -1,39 +1,17 @@
 
-# edit this config to configure your server
-# all flask builtin variables will work (http://flask.pocoo.org/docs/0.10/config/)
+# the database to connect to, in format that can be read by
+# sqlalchemy.create_engine
+# see http://docs.sqlalchemy.org/en/latest/core/engines.html#sqlalchemy.create_engine
+database_url = 'sqlite:///db.sqlite3'
 
-# server bind address
-# 0.0.0.0 allows connections from anywhere
-SERVER_BIND = '0.0.0.0'
+# maximum token age before forced to get a new token (in seconds)
+# - default = 24 hours
+token_max_age = 60 * 60 * 24
 
-# and port
-SERVER_PORT = 5000
+# set which origins are allowed to access with CORS
+cors_origin = "*"
 
-# debugging mode
-# WARNING: change to False in production servers
-DEBUG = True
-
-SECRET_KEY = 'nothing'
-
-# the db backend to use - currently only sqlite ('sqlite_db')
-DB_TYPE = 'sqlite_db'
-
-# options to pass to the db backend
-# below for sqlite
-DB_OPTIONS = {
-    'FILE': 'sqlite.db',
-    'INIT_SQL_FILE': 'init.sql'
-}
-
-## example for mongodb
-# DB_OPTIONS = {
-#         'HOST': 'localhost',
-#         'PORT': 3545
-#         'DATABASE_ROOT': 'simplenote' # the database root to use
-#         }
-
-
-
-
-# after reading config from this file, will read from the file given in 'FLASK_SIMPLENOTE_SRV' envvar
-
+# Tornado options
+listen_port = 8888
+listen_host = "127.0.0.1"
+debug = True

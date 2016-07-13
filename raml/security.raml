@@ -1,0 +1,28 @@
+#%RAML 0.8
+
+- token:
+    type: x-token
+    description: authentication via a username and token given in the queryparams
+    describedBy:
+      queryParameters:
+        auth:
+          type: string
+          description: your user access token
+          required: true
+        email:
+          type: string
+          description: your username or email address
+          required: true
+      responses:
+        401:
+          description: invalid/missing credentials
+
+- password:
+    type: x-password
+    description: authentication via username and password in body
+    describedBy:
+      body:
+        description: query param string formatted like 'email=me@example.com&password=abcdef', but base64 encoded
+      responses:
+        401:
+          description: invalid/missing credentials

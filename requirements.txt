@@ -1,3 +1,3 @@
-flask
 bcrypt
-flask-cors
+sqlalchemy
+tornado

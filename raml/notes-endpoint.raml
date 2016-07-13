@@ -1,0 +1,83 @@
+#%RAML 0.8
+
+description: the note endpoint
+post:
+  description: create a note
+  body:
+    application/json:
+      schema: note
+      example: |
+        {
+        }
+  responses:
+    200:
+      description: json object containing a note object
+      body:
+        application/json:
+          schema: note
+          example: |
+            {
+            }
+
+/{key}:
+  description: a specific note
+  uriParameters:
+    key:
+      type: string
+  get:
+    description: retrieve a specific note by key
+    responses:
+      200:
+        description: json note object
+        body:
+          application/json:
+            schema: note
+            example: |
+              {
+              }
+      404:
+        description: note not found
+
+  delete:
+    description: delete a note by key
+    responses:
+      200:
+      404:
+
+  post:
+    description: update an existing note
+    body:
+      application/json:
+        schema: note
+        example: |
+          {
+          }
+    responses:
+      200:
+        description: json note object (current, after update)
+        body:
+          application/json:
+            schema: note
+            example: |
+              {
+              }
+      404:
+        description: note not found
+      400:
+        description: invalid data provided
+
+  /{version}:
+    description: a note at a particular version
+    get:
+      description: retrieve a note at a given version
+      responses:
+        200:
+          description: json note object
+          body:
+            application/json:
+              schema: note
+              example: |
+                {
+                }
+        404:
+          description: note not found

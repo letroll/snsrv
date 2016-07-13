@@ -1,0 +1,13 @@
+#%RAML 0.8
+
+securedBy: ['password']
+get:
+  description: "retrieve your api token"
+  responses:
+    200:
+      description: if all ok, returns your token in the body
+      body:
+        text/plain:
+          example: "a37051f0-f514-4b73-a8a8-2be1fb3f1b51"
+    401:
+      description: invalid credentials

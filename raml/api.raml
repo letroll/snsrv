@@ -1,0 +1,28 @@
+#%RAML 0.8
+
+# metadata
+title: snsrv
+version: 2.1.3
+baseUri: http://localhost:8888
+mediaType: application/json
+
+# information
+documentation:
+  - title: Information
+    content: |
+      Welcome to the snsrv api documentation. Warning, this is a work in
+      progress! See the [Github repo](https://github.com/swalladge/snsrv) for more
+      information.
+
+# schemas
+securitySchemes: !include security.raml
+schemas: !include schemas.raml
+
+# defaults/config
+securedBy: [token]
+
+# endpoints
+/api2/data: !include notes-endpoint.raml
+/api2/index: !include index-endpoint.raml
+/api2/tags: !include tags-endpoint.raml
+/api/login: !include token-endpoint.raml

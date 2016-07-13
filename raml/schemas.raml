@@ -1,0 +1,162 @@
+#%RAML 0.8
+
+- note: |
+    {
+      "title": "Note",
+      "type": "object",
+      "properties": {
+        "key": {
+          "type": "string"
+        },
+        "deleted": {
+          "type": "integer"
+        },
+        "modifydate": {
+          "type": "number"
+        },
+        "createdate": {
+          "type": "number"
+        },
+        "syncnum": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "integer"
+        },
+        "minversion": {
+          "type": "integer"
+        },
+        "sharekey": {
+          "type": "string"
+        },
+        "publishkey": {
+          "type": "string"
+        },
+        "content": {
+          "type": "string"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "systemtags": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      },
+      "required": ["key", "content", "deleted", "modifydate", "createdate", "syncnum", "version", "minversion"]
+    }
+- index: |
+    {
+      "title": "Note Index",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "data": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "key": {
+                "type": "string"
+              },
+              "deleted": {
+                "type": "integer"
+              },
+              "modifydate": {
+                "type": "number"
+              },
+              "createdate": {
+                "type": "number"
+              },
+              "syncnum": {
+                "type": "integer"
+              },
+              "version": {
+                "type": "integer"
+              },
+              "minversion": {
+                "type": "integer"
+              },
+              "sharekey": {
+                "type": "string"
+              },
+              "publishkey": {
+                "type": "string"
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "systemtags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          },
+          "required": ["key", "deleted", "modifydate", "createdate", "syncnum", "version", "minversion"]
+        }
+      },
+      "required": ["count", "data"]
+    }
+- tag: |
+    {
+      "title": "Tag",
+      "type": "object",
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "index": {
+          "type": "integer"
+        },
+        "version": {
+          "type": "integer"
+        }
+      },
+      "required": ["name", "index", "version"]
+    }
+
+# TODO: "time" key in response?
+- tagindex: |
+    {
+      "title": "Tag Index",
+      "type": "object",
+      "properties": {
+        "count": {
+          "type": "integer"
+        },
+        "mark": {
+          "type": "integer"
+        },
+        "tags": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["index", "name", "version"],
+            "properties": {
+              "index": {
+                "type": "integer"
+              },
+              "name": {
+                "type": "string"
+              },
+              "version": {
+                "type": "integer"
+              }
+            }
+          }
+        }
+      },
+      "required": ["count", "tags"]
+    }
