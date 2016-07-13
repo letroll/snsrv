@@ -150,7 +150,7 @@ class Tag(Base):
 # NOTE: processing is split up between functions in the below class, and
 # functions in the server. All functions here assume sanitized data, everything
 # in the server code must treat all incoming data as untrusted and only send to
-# db when fully sanitized 
+# db when fully sanitized
 
 class db():
     """db object to use from app.py in the request handlers"""
@@ -203,7 +203,7 @@ class db():
             return user.token
         else:
             return self._gen_token(user)
-        
+
     def del_token(self, user):
         user.token = None
         user.tokendate = None
@@ -267,7 +267,7 @@ class db():
         note.unread = 0
         note.markdown = 0
         note.islist = 0
-        
+
         return note
 
     def create_note(self, user, data):

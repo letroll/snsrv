@@ -16,6 +16,10 @@ class BaseHandler(RequestHandler):
         """writes the json data with status message (basic wrapper)"""
         self.write(data);
 
+    def write_error(self, status, **kwargs):
+        # don't bother writing anything in response body
+        pass
+
     def set_default_headers(self):
         self.set_header("Access-Control-Allow-Origin", cfg.cors_origin)
         pass
