@@ -2,11 +2,10 @@
 import bcrypt
 import uuid
 
-from sqlalchemy import create_engine, Sequence, and_
+from sqlalchemy import create_engine, Sequence, inspect
 from sqlalchemy import Column, Integer, String, Float, ForeignKey, Table
 from sqlalchemy.orm import sessionmaker, relationship
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm.exc import MultipleResultsFound, NoResultFound
 
 import config as cfg
 import utils
@@ -56,7 +55,7 @@ class Note(Base):
     pinned = Column(Integer, nullable=False)
     unread = Column(Integer, nullable=False)
     markdown = Column(Integer, nullable=False)
-    list = Column(Integer, nullable=False)
+    islist = Column(Integer, nullable=False)
 
     # the user the note belongs to
     userid = Column(Integer, ForeignKey('users.id'), nullable=False)
@@ -93,7 +92,7 @@ class Note(Base):
             systags.append('markdown')
         if self.unread == 1:
             systags.append('unread')
-        if self.list == 1:
+        if self.islist == 1:
             systags.append('list')
         data['systemtags'] = systags
         return data
@@ -148,6 +147,10 @@ class Tag(Base):
         return data
 
 
+# NOTE: processing is split up between functions in the below class, and
+# functions in the server. All functions here assume sanitized data, everything
+# in the server code must treat all incoming data as untrusted and only send to
+# db when fully sanitized 
 
 class db():
     """db object to use from app.py in the request handlers"""
@@ -230,74 +233,62 @@ class db():
         return [n.dict() for n in notes]
 
     def _gen_unique_key(self):
-        # TODO: generate a unique key
-        return 'abc'
+        return str(uuid.uuid4()) + str(int(utils.now()))
 
-    def create_note(self, user, data):
+    # makes a new note object - used by the server part in creating notes
+    def new_note(self, user):
+        now = utils.now()
+
         note = Note()
-        note.create = data['createdate']
-        note.modify = data['modifydate']
+
+        note.user = user
+
         note.key = self._gen_unique_key()
-        note.deleted = data['deleted']
-        note.syncnum = data['syncnum']
-        note.version = data['version']
-        note.minversion = data['minversion']
-        note.content = data['content']
-        note.userid = user.id
-
-        systags = data['systemtags']
-        note.pinned = 1 if 'pinned' in systags else 0
-        note.unread = 1 if 'unread' in systags else 0
-        note.markdown = 1 if 'markdown' in systags else 0
-        note.list = 1 if 'list' in systags else 0
-
+        note.deleted = 0
+        note.modify = now
+        note.create = now
+        note.syncnum = 1
+        note.version = 1
+        note.minversion = 1
+        note.sharekey = None
+        note.systemtags = []
         note.tags = []
-        for tagname in data['tags']:
-            t = self.session.query(Tag).filter_by(lower_name=tagname.lower(), userid=user.id).one_or_None()
-            if not t:
-                t = Tag(user.id, tagname)
-            note.tags.append(t)
+        note.content = ''
+        
+        return note
 
-        self.session.add(note)
-        if self.commit():
-            return note.dict()
-        return None
+    # adds or updates a note to the database.
+    def add_note(self, note, tags, systemtags):
+        user = note.user
 
-    def update_note(self, user, key, data):
-        note = self.session.query(Note).filter_by(userid=user.id, key=key).first()
-        if not note:
-            return None
-
-        note.modify = data.get('modifydate', note.modify)
-        note.deleted = data.get('deleted', note.deleted)
-        note.syncnum = data.get('syncnum', note.syncnum)
-        note.version = data.get('version', note.version)
-        note.minversion = data.get('minversion', note.minversion)
-        note.content = data.get('content', note.content)
-        note.userid = user.id
-
-        systags = data['systemtags']
-        note.pinned = 1 if 'pinned' in systags else 0
-        note.unread = 1 if 'unread' in systags else 0
-        note.markdown = 1 if 'markdown' in systags else 0
-        note.list = 1 if 'list' in systags else 0
+        if systemtags is not None:
+            note.pinned = 1 if 'pinned' in systemtags else 0
+            note.unread = 1 if 'unread' in systemtags else 0
+            note.markdown = 1 if 'markdown' in systemtags else 0
+            note.islist = 1 if 'list' in systemtags else 0
 
         old_tags = [t for t in note.tags]
-        note.tags = []
-        for tagname in data['tags']:
-            t = self.session.query(Tag).filter_by(lower_name=tagname.lower(), userid=user.id).one_or_None()
-            if not t:
-                t = Tag(user.id, tagname)
-            note.tags.append(t)
+        if tags is not None:
+            note.tags = []
+            for tagname in tags:
+                t = self.session.query(Tag).filter_by(lower_name=tagname.lower(), userid=user.id).one_or_none()
+                if not t:
+                    t = Tag(user.id, tagname)
+                note.tags.append(t)
 
         # delete any tags no longer in use
+        # TODO: check this works
         for t in old_tags:
-            if t not in note.tags:
-                count = self.session.query(Note).filter(Note.tags.any(id=t.id)).count()
-                if count == 0:
-                    self.session.delete(t)
+            count = self.session.query(Note).filter(Note.tags.any(id=t.id)).count()
+            if count == 0:
+                self.session.delete(t)
 
-        if self.commit():
+        # check if the note is in the session yet - won't be if this is a new
+        # note
+        if inspect(note).transient:
+            self.session.add(note)
+
+        if not self.commit():
             return note.dict()
         return None
 
@@ -316,10 +307,10 @@ class db():
             return True
         return False
 
-    def _save_version(self, note):
+    def save_version(self, note):
         v = Version()
         v.key = note.key
-        v.modifydate = note.modifydate
+        v.versiondate = note.modifydate
         v.content = note.content
         v.version = note.version
         self.session.add(v)
@@ -327,8 +318,7 @@ class db():
     def _drop_old_versions(self, note, minversion):
         self.session.query(Version).filter(Version.version < minversion).delete()
 
-    def notes_index(self, user, length=100, since=0, mark=0):
-        # TODO: validation
+    def notes_index(self, user, length, since, mark):
         notes = self.session.query(Note).filter(Note.userid==user.id).filter(Note.modify > since).order_by(Note.modify).all()
 
         data = {}
@@ -337,6 +327,20 @@ class db():
 
         # add new mark if needed
         total = len(notes)
+        if (total - mark - length) > 0:
+            data['mark'] = mark+length
+
+        return data
+
+    def tags_index(self, user, length, mark):
+        tags = self.session.query(Note).filter(Note.userid==user.id).order_by(Tag.index).all()
+
+        data = {}
+        data['tags'] = [n.short_dict() for n in tags[mark:mark+length]]
+        data['count'] = len(data['tags'])
+
+        # add new mark if needed
+        total = len(tags)
         if (total - mark - length) > 0:
             data['mark'] = mark+length
 

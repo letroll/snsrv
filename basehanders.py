@@ -27,12 +27,12 @@ class ApiHandler(BaseHandler):
 
     # also sets current_user
     def prepare(self):
-        token = self.get_query_argument('token', None)
+        token = self.get_query_argument('auth', None)
         email = self.get_query_argument('email', None)
         if not email:
             return self.send_error(401, reason='email get parameter missing')
         elif not token:
-            return self.send_error(401, reason='token get parameter missing')
+            return self.send_error(401, reason='auth get parameter missing')
 
         self.user = self.db.authenticate_token(email, token)
 

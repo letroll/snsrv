@@ -11,6 +11,7 @@ from tornado.web import Application, url
 from tornado.escape import json_decode
 
 import json
+import re
 import base64
 
 import database
@@ -18,62 +19,44 @@ import config as cfg
 import utils
 from basehanders import ApiHandler, BaseHandler
 
+invalid_tag_chars = re.compile(r'[,\s]')
 
 class notes_handler(ApiHandler):
     """handles specific notes requests"""
-
-    def _notes_list(self):
-        since = self.get_query_argument('since', None)
-        upto = self.get_query_argument('upto', None)
-        tags = self.get_query_argument('tags', None)
-
-        if since:
-            try:
-                since = float(since)
-            except:
-                return self.send_error(400, reason='invalid "since" value')
-        if upto:
-            try:
-                upto = float(upto)
-            except:
-                return self.send_error(400, reason='invalid "upto" value')
-
-        if tags:
-            tags = tags.split(',')
-            tags = set(t for t in tags if t)
-            if len(tags) > 3 or len(tags) == 0:
-                return self.send_error(400, reason='invalid number of tags (must be from 1 to 3 if specified)')
-
-        return self.db.get_bookmarks(self.user, since, upto, tags)
 
     def get(self, key=None, version=None):
         """return the note by key"""
         if not key:
             return self.send_error(400)
 
-        if version:
-            # send the version of note by key
-            note = self.db.get_version(self.user, key)
-        else:
-            # send the actual note
-            note = self.db.get_note(self.user, key)
+        if version is not None:
+            try:
+                version = int(version)
+            except:
+                return self.send_error(400, reason='invalid version type')
+
+        note = self.db.get_note(self.user, key, version)
         if not note:
             return self.send_error(404, reason='bookmark not found')
 
         self.send_data(note)
 
+    def _create_note(self, data):
+        """creates a new note - data is sanitized"""
+            # # update note - must save old version
+            # if key is not None and content != note.content:
+            #     self.db.save_version(note)
+
+        # TODO: check syncnum/version/modifydate to ensure old notes don't
+        # overwrite new notes...
+        pass
+
+    def _update_note(self, key, data):
+        """updates a note - data is sanitized"""
+
     def post(self, key=None):
         """create or update a note"""
         now = utils.now()
-        default = {
-               'deleted': 0,
-               'createdate': now,
-               'modifydate': now,
-               'syncnum': 0,
-               'version': 1,
-               'systemtags': [],
-               'tags': [],
-                 }
 
         # get the posted data
         data = {}
@@ -82,30 +65,75 @@ class notes_handler(ApiHandler):
         except json.JSONDecodeError as e:
             return self.send_error(400, reason='invalid json data (line {}, col {})'.format(e.lineno, e.colno))
 
+        safe_data = {}
+
+        # deleted status
+        deleted = data.get('deleted', None)
+        if deleted is not None:
+            try:
+                deleted = int(deleted)
+                assert(deleted == 1 or deleted == 0)
+            except:
+                return self.send_error(400, reason='invalid deleted value')
+        safe_data['deleted'] = deleted
+
+        # modifydate
+        modify = data.get('modifydate', None)
+        if modify is not None:
+            try:
+                modify = float(modify)
+                assert(modify >= 0 and modify <= now)
+            except:
+                return self.send_error(400, reason='invalid modifydate')
+        safe_data['modify'] = modify
+
+        # createdate
+        create = data.get('createdate', None)
+        if create is not None:
+            try:
+                create = float(create)
+                assert(create >= 0 and create <= now)
+            except:
+                return self.send_error(400, reason='invalid createdate')
+        safe_data['create'] = create
+
+        # systemtags
+        systemtags = data.get('systemtags', None)
+        if systemtags is not None:
+            try:
+                assert(isinstance(systemtags, list))
+                for tag in systemtags:
+                    assert(tag in ('markdown', 'list', 'pinned', 'unread'))
+            except:
+                return self.send_error(401, reason='invalid systemtags')
+        safe_data['systemtags'] = systemtags
+
+        # tags
+        tags = data.get('tags', None)
+        if tags is not None:
+            try:
+                assert(isinstance(tags, list))
+                for tag in systemtags:
+                    assert(isinstance(tag, str) and invalid_tag_chars.search(tag) is None)
+            except:
+                return self.send_error(401, reason='invalid tags')
+        safe_data['tags'] = tags
+
+        # the content
+        content = data.get('content', None)
+        if content is not None:
+            try:
+                assert(isinstance(content, str))
+                # TODO: max-len restriction
+            except:
+                return self.send_error(401, reason='invalid content')
+        safe_data['content'] = content
+
+        # note to build on
         if key is not None:
-            # then lets update the existing note
-            pass  # TODO
-
+            self._update_note(key, safe_data)
         else:
-            # create new note
-            pass  # TODO
-
-        create = data.get('create', default['create'])
-        try:
-            create = float(create)
-            if create > now:
-                create = now
-        except:
-            return self.send_error(400, reason='invalid creation date supplied')
-
-        # setup the modification date
-        modify = data.get('modify', default['modify'])
-
-        note = self.db.create_bookmark(self.user, notedata)
-        if not note:
-            return self.send_error(400, reason='failed to create/update bookmark in database')
-
-        self.send_data(note)
+            self._create_note(safe_data)
 
     def delete(self, key=None):
         """delete a note if exists"""
@@ -174,15 +202,35 @@ class tags_handler(ApiHandler):
 class index_handler(ApiHandler):
 
     def get(self):
-        # TODO: notes index
-        pass
+        length = self.get_query_argument('length', 100)
+        since = self.get_query_argument('since', 0)
+        mark = self.get_query_argument('mark', 0)
+
+        try:
+            length = int(length)
+            since = float(since)
+            mark = int(mark)
+        except:
+            return self.send_error(400, reason='invalid get parameter types')
+
+        data = self.db.notes_index(self.user, length, since, mark)
+        return self.write(data)
 
 
 class tags_index_handler(ApiHandler):
 
     def get(self):
-        # TODO: tags index
-        pass
+        length = self.get_query_argument('length', 100)
+        mark = self.get_query_argument('mark', 0)
+
+        try:
+            length = int(length)
+            mark = int(mark)
+        except:
+            return self.send_error(400, reason='invalid get parameter types')
+
+        data = self.db.tags_index(self.user, length, mark)
+        return self.write(data)
 
 
 class login_handler(BaseHandler):
@@ -204,26 +252,19 @@ class login_handler(BaseHandler):
                     return self.send_error(500)
         return self.send_error(401)
 
-    # def delete(self):
-    #     ok = self.db.del_token()
-    #     if ok:
-    #         return self.send_data(None)
-    #     self.send_error(500, "unable to delete token")
-
-
 
 def main():
     db = database.db(cfg.database_url)
     db.create_all()
 
     app = Application([
-        url(r'^/api2/data/([^/]+)/?$', notes_handler), # get/update/delete note
-        url(r'^/api2/data/([^/]+)/(\d+)/?$', notes_handler), # get note version
-        url(r'^/api2/data/?$', notes_handler), # create note
-        url(r'^/api2/index/?$', index_handler), # note index
-        url(r'^/api2/tags/?$', tags_index_handler), # tags index
-        url(r'^/api2/tags/([^/,]+)/?$', tags_handler), # get/update/delete tag
-        url(r'^/api/login/?$', login_handler), # login methods
+        url(r'^/api2/data/([^/]+)/?$', notes_handler),  # get/update/del note
+        url(r'^/api2/data/([^/]+)/(\d+)/?$', notes_handler),  # note version
+        url(r'^/api2/data/?$', notes_handler),  # create note
+        url(r'^/api2/index/?$', index_handler),  # note index
+        url(r'^/api2/tags/?$', tags_index_handler),  # tags index
+        url(r'^/api2/tags/(.+)$', tags_handler),  # get/update/del tag
+        url(r'^/api/login/?$', login_handler),  # login methods
         ],
         debug=cfg.debug,
         db=db
