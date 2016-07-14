@@ -51,6 +51,7 @@ python app.py
 
 ## TODO/ROADMAP
 
+- work out versioning with notes (merges? reject with version newer/older? use modifydate instead?)
 - work out how to handle tag versioning
 - handle note version conflicts (find more info and test against simplenote's api)
 - work out how note/tag sharing works to be able to implement it

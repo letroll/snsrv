@@ -313,17 +313,16 @@ class db():
         return None
 
     # adds or updates a note to the database.
-    def update_note(self, user, key, data):
-        note = self.session.query(Note).filter_by(userid=user.id, key=key).one()
+    def update_note(self, user, note, data):
 
         content = data.get('content', None)
         if content is not None and content != note.content:
             # TODO: how to handle versions this way?
             # version vs modifydate
-            version = data.get('version', None)
-            if version is not None:
-                if version <= note.version:
-                    return None # older version of the note
+            # version = data.get('version', None)
+            # if version is not None:
+            #     if version <= note.version:
+            #         return None  # older version of the note
             self._save_version(note)
             note.version += 1
             minversion = max(0, note.version - cfg.max_versions)
@@ -405,8 +404,8 @@ class db():
         notes = self.session.query(Note).filter(Note.userid==user.id).filter(Note.modify > since).order_by(Note.modify).all()
 
         data = {}
-        data['notes'] = [n.short_dict() for n in notes[mark:mark+length]]
-        data['count'] = len(data['notes'])
+        data['data'] = [n.short_dict() for n in notes[mark:mark+length]]
+        data['count'] = len(data['data'])
 
         # add new mark if needed
         total = len(notes)

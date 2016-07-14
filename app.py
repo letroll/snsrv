@@ -69,7 +69,10 @@ class notes_handler(ApiHandler):
         if modify is not None:
             try:
                 modify = float(modify)
-                assert(modify >= 0 and modify <= now)
+                # TODO: should enforce modify/create dates before current
+                # server time (utc)?
+                # assert(modify >= 0 and modify <= now)
+                assert(modify >= 0)
             except:
                 return self.send_error(400, reason='invalid modifydate')
         safe_data['modify'] = modify
@@ -79,7 +82,8 @@ class notes_handler(ApiHandler):
         if create is not None:
             try:
                 create = float(create)
-                assert(create >= 0 and create <= now)
+                # assert(create >= 0 and create <= now)
+                assert(create >= 0)
             except:
                 return self.send_error(400, reason='invalid createdate')
         safe_data['create'] = create
@@ -135,14 +139,14 @@ class notes_handler(ApiHandler):
         if key is None:
             note = self.db.create_note(self.user, safe_data)
         else:
-            old_note = self.db.get_note(self.user, key)
-            if not old_note:
+            old_note_object = self.db.get_note_object(self.user, key)
+            if not old_note_object:
                 return self.send_error(404, reason='note not found')
-            note = self.db.update_note(self.user, key, safe_data)
+            note = self.db.update_note(self.user, old_note_object, safe_data)
 
         if note:
-            return self.write(note)
-        return self.send_error(500)
+            return self.send_data(note)
+        return self.send_error(500, reason='unable to create/update note')
 
 
     def delete(self, key=None):

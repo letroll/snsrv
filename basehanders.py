@@ -41,7 +41,6 @@ class ApiHandler(BaseHandler):
         self.user = self.db.authenticate_token(email, token)
 
         if not self.user:
-            print("sending error")
             return self.send_error(401, reason='invalid credentials')
 
         self.current_user = self.user.email
