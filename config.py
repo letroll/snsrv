@@ -18,3 +18,5 @@ debug = True
 
 # note options
 max_versions = 20
+
+tag_max_len = 50

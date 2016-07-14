@@ -124,7 +124,8 @@ class Tag(Base):
     id = Column(Integer, Sequence('user_id_seq'), primary_key=True)
     name = Column(String(100), nullable=False, unique=True)
     lower_name = Column(String(100), nullable=False, unique=True)
-    index = Column(Integer, Sequence('id_seq'))
+    index = Column(Integer, nullable=False)
+    version = Column(Integer, nullable=False)
     userid = Column(Integer, ForeignKey('users.id'), nullable=False)
 
     user = relationship('User', back_populates='tags')
@@ -137,13 +138,14 @@ class Tag(Base):
         self.userid = userid
         self.name = name
         self.lower_name = name.lower()
-        if index is not None:
-            self.index = index
+        self.version = 1
+        self.index = index if index is not None else 1
 
     def dict(self):
         data = {}
         data['name'] = self.name
         data['count'] = len(self.notes)
+        data['index'] = self.index
         return data
 
 
@@ -350,6 +352,7 @@ class db():
             note.islist = 1 if 'list' in systemtags else 0
 
         old_tags = []
+        # TODO: trigger markdown systemtag if markdown tag in tags
         tags = data.get('tags', None)
         if tags is not None:
             old_tags = [t for t in note.tags]
@@ -377,6 +380,7 @@ class db():
         self.session.delete(note)
 
         # delete any tags no longer in use
+        # TODO: is this wanted behaviour?
         for t in old_tags:
             count = self.session.query(Note).filter(Note.tags.any(id=t.id)).count()
             if count == 0:
@@ -412,11 +416,16 @@ class db():
         return data
 
     def tags_index(self, user, length, mark):
-        tags = self.session.query(Note).filter(Note.userid==user.id).order_by(Tag.index).all()
+        tags = self.session.query(Tag).filter(Tag.userid==user.id).order_by(Tag.index).all()
 
         data = {}
-        data['tags'] = [n.short_dict() for n in tags[mark:mark+length]]
+        data['tags'] = [t.dict() for t in tags[mark:mark+length]]
         data['count'] = len(data['tags'])
+        # TODO: simplenote api doc shows 'time' property, but no
+        # explanation
+
+        # TODO: handle tag sharing ('share' property with email
+        # addresses, auto-setup shared tag if tagname is email address)
 
         # add new mark if needed
         total = len(tags)
@@ -430,53 +439,89 @@ class db():
         return [t.dict() for t in tags] if tags else []
 
     def get_tag(self, user, tagname):
-        tag = self.session.query(Tag).filter_by(userid=user.id, name=tagname).one_or_none()
+        tag = self.session.query(Tag).filter_by(userid=user.id, lower_name=tagname.lower()).one_or_none()
         if tag:
             return tag.dict()
         return None
 
-    def del_tag(self, user, tagname):
-        tag = self.session.query(Tag).filter_by(userid=user.id, name=tagname).one_or_none()
+    def get_tag_object(self, user, tagname):
+        tag = self.session.query(Tag).filter_by(userid=user.id, lower_name=tagname.lower()).one_or_none()
         if tag:
-            # update the modify date on all related notes
-            now = utils.now()
-            for bm in tag.notes:
-                bm.modify = now
+            return tag
+        return None
 
-            self.session.delete(tag)
-            if self.commit():
-                return (200, True)
-            else:
-                return (500, False)
-        return (404, False)
+    def del_tag(self, user, tag):
 
-    def rename_tag(self, user, old, new):
-        tag = self.session.query(Tag).filter_by(userid=user.id, name=old).one_or_none()
-        check_new = self.session.query(Tag).filter_by(userid=user.id, name=new).one_or_none()
-        # make sure old name exists
-        if not tag:
-            return (404, None)
-
+        # update the modify date on all related notes
         now = utils.now()
-        # if tag with new name already exists, merge
-        if check_new:
-            for bm in tag.notes:
-                bm.tags.append(check_new)
-                bm.modify = now
-            self.session.delete(tag)
-            if self.commit():
-                return (200, check_new.dict())
+        for note in tag.notes:
+            note.modify = now
+            note.syncnum += 1
 
-        # otherwise, just update the name
+        # delete the tag
+        self.session.delete(tag)
+        if self.commit():
+            return True
+        return False
+
+    def create_tag(self, user, name, index, version):
+        # TODO: should handle version?
+        lowername = name.lower()
+        tag = self.session.query(Tag).filter_by(userid=user.id, lower_name=lowername).one_or_none()
+        if tag:
+            tag.index = index
+            tag.version += 1
         else:
-            tag.name = new
-            # update the modify date on all related notes
-            for bm in tag.notes:
-                bm.modify = now
-            if self.commit():
-                return (200, tag.dict())
+            tag = Tag(user.id, name, index)
+            self.session.add(tag)
+        if self.commit():
+            return tag.dict()
+        return None
 
-        return (500, None)
+    def update_tag(self, user, tag, newname, index, version):
+
+        if newname is not None:
+            lower_newname = newname.lower()
+            now = utils.now()
+            ret = None
+
+            # see if already tag with name
+            # if tag with new name already exists, merge
+            check_new = self.session.query(Tag).filter_by(userid=user.id, lower_name=lower_newname).one_or_none()
+            if check_new:
+                for note in tag.notes:
+                    note.tags.append(check_new)
+                    note.modify = now
+                    note.syncnum += 1
+                self.session.delete(tag)
+                if index is not None:
+                    check_new.index = index
+                # TODO: how does versioning work with tags?
+                check_new.version += 1
+                check_new.name = newname  # since newname could be different case
+                ret = check_new
+
+            # otherwise, update the current tag
+            else:
+                tag.name = newname
+                tag.lower_name = lower_newname
+                tag.version += 1  # or = version given?
+                if index is not None:
+                    tag.index = index
+                ret = tag
+                # update the modify time for each note
+                for note in tag.notes:
+                    note.modify = now
+                    note.syncnum += 1
+        else:
+            if index is not None:
+                tag.index = index
+                tag.version += 1
+            ret = tag
+
+        if self.commit():
+            return ret.dict()
+        return None
 
     def commit(self):
         # TODO: need to catch errors whenever flush called (maybe turn off

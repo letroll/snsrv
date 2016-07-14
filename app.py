@@ -164,53 +164,68 @@ class notes_handler(ApiHandler):
 class tags_handler(ApiHandler):
     """handles requests for tag operations"""
 
-    def get(self, tagname=None):
-        """Return list of all tags"""
-        if tagname is None:
-            tags = self.db.get_tags(self.user)
-            if tags is None:
-                return self.send_error(500, reason='failed retrieving tags')
-            self.send_data(tags)
+    def get(self, tagname):
+        tag = self.db.get_tag(self.user, tagname)
+        if tag:
+            self.send_data(tag)
         else:
-            tag = self.db.get_tag(self.user, tagname)
-            if tag:
-                self.send_data(tag)
-            else:
-                self.send_error(404, reason='tag name not found')
+            self.send_error(404, reason='tag not found')
 
-    def delete(self, tagname=None):
-        """delete a tag by name if exists"""
-        status, ok = self.db.del_tag(self.user, tagname)
-        if status == 404:
-            return self.send_error(404, reason="tag doesn't exist")
-        elif status == 500:
-            return self.send_error(500, reason="failed to delete tag (database error)")
-        else:
-            return self.send_data(None)
-
-    def post(self, tagname=None):
+    def post(self, tagname):
         """rename a tag (merge with existing if already tag with new name"""
-        if not tagname:
-            return self.send_error(400, reason='cannot update without a tag name)')
 
+        tag = self.db.get_tag_object(self.user, tagname)
+        if not tag:
+            return self.send_error(404, reason='tag not found')
+
+        # get the tag data
         try:
             data = json_decode(self.request.body)
         except json.JSONDecodeError as e:
             return self.send_error(400, reason='invalid json data (line {}, col {})'.format(e.lineno, e.colno))
+
+        # tag name
         name = data.get('name', None)
-        if not isinstance(name, str):
-            return self.send_error(400, reason='missing or invalid new tagname')
+        if name is not None:
+            if not isinstance(name, str):
+                return self.send_error(400, reason='missing or invalid new tagname')
+            if invalid_tag_chars.search(name):
+                return self.send_error(400, reason='invalid characters in tag name')
+            if len(name) > cfg.tag_max_len:
+                return self.send_error(400, reason='tag name too long')
 
-        if len(name) > cfg.bm_tag_max_len:
-            return self.send_error(400, reason='tag name too long')
+        # index
+        index = data.get('index', None)
+        if index is not None:
+            try:
+                index = int(index)
+            except:
+                return self.send_error(400, reason='tag index invalid')
 
-        status, tag = self.db.rename_tag(self.user, tagname, name)
-        if status == 404:
-            return self.send_error(404, reason="tag doesn't exist")
-        elif status == 500:
-            return self.send_error(500, reason="failed to rename tag (database error)")
-        else: # status == 200
-            return self.send_data(tag)
+        # version
+        version = data.get('version', None)
+        if version is not None:
+            try:
+                version = int(version)
+                assert(version > 0)
+            except:
+                return self.send_error(400, reason='tag index invalid')
+
+        tag = self.db.update_tag(self.user, tag, name, index, version)
+        if not tag:
+            return self.send_error(500, reason='failed to update tag')
+        return self.send_data(tag)
+
+    def delete(self, tagname):
+        """delete a tag by name if exists"""
+        tag = self.db.get_tag_object(self.user, tagname)
+        if not tag:
+            return self.send_error(404, reason='tag doesn\'t exist')
+
+        ok = self.db.del_tag(self.user, tag)
+        if not ok:
+            return self.send_error(500, reason='failed to delete tag')
+
 
 class index_handler(ApiHandler):
 
@@ -244,6 +259,49 @@ class tags_index_handler(ApiHandler):
 
         data = self.db.tags_index(self.user, length, mark)
         return self.write(data)
+
+    def post(self):
+        """create a tag"""
+
+        # get the tag data
+        try:
+            data = json_decode(self.request.body)
+        except json.JSONDecodeError as e:
+            return self.send_error(400, reason='invalid json data (line {}, col {})'.format(e.lineno, e.colno))
+
+        # tag name
+        name = data.get('name', None)
+        if name is not None:
+            if not isinstance(name, str):
+                return self.send_error(400, reason='missing or invalid new tagname')
+            if invalid_tag_chars.search(name):
+                return self.send_error(400, reason='invalid characters in tag name')
+            if len(name) > cfg.tag_max_len:
+                return self.send_error(400, reason='tag name too long')
+        else:
+            return self.send_error(400, reason='no tag name given')
+
+        # index
+        index = data.get('index', None)
+        if index is not None:
+            try:
+                index = int(index)
+            except:
+                return self.send_error(400, reason='tag index invalid')
+
+        # version
+        version = data.get('version', None)
+        if version is not None:
+            try:
+                version = int(version)
+                assert(version > 0)
+            except:
+                return self.send_error(400, reason='tag index invalid')
+
+        tag = self.db.create_tag(self.user, name, index, version)
+        if not tag:
+            return self.send_error(500, reason='failed to create tag')
+        return self.write(tag)
 
 
 class login_handler(BaseHandler):
